@@ -1,0 +1,30 @@
+{
+  "name": "b-cast",
+  "version": "0.1.0",
+  "description": "开源的个人PWA音频播放器，支持从B站自动下载和管理音频内容",
+  "private": true,
+  "scripts": {
+    "init": "node scripts/init-cloudflare.js",
+    "init:bash": "bash scripts/init-cloudflare.sh",
+    "check-env": "node scripts/check-deployment.js",
+    "deploy": "node scripts/deploy.js",
+    "deploy:bash": "bash scripts/deploy.sh",
+    "deploy:backend": "cd backend && wrangler deploy",
+    "deploy:frontend": "cd frontend && npm run build && wrangler pages deploy dist",
+    "dev:backend": "cd backend && wrangler dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "bilibili",
+    "audio",
+    "player",
+    "pwa",
+    "cloudflare"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

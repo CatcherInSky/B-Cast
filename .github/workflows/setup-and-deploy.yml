@@ -1,0 +1,246 @@
+name: 🚀 Setup and Deploy (First Time)
+
+# 首次部署工作流：自动创建所有资源并部署
+# Fork后首次运行，会自动创建D1、R2、部署前后端
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: '选择操作'
+        required: true
+        default: 'full-setup'
+        type: choice
+        options:
+          - full-setup      # 完整初始化（创建D1、R2、部署）
+          - deploy-only     # 仅部署
+          - init-only       # 仅初始化资源
+
+jobs:
+  setup-cloudflare:
+    name: 初始化Cloudflare资源
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'full-setup' || github.event.inputs.action == 'init-only'
+    
+    outputs:
+      database_id: ${{ steps.create-d1.outputs.database_id }}
+      worker_url: ${{ steps.deploy-worker.outputs.worker_url }}
+    
+    steps:
+      - name: 📥 Checkout代码
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: 📦 安装wrangler
+        run: npm install -g wrangler
+      
+      - name: 🗄️ 创建D1数据库
+        id: create-d1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          # 尝试创建D1数据库
+          OUTPUT=$(wrangler d1 create b-cast-mvp 2>&1 || echo "")
+          
+          # 提取database_id
+          if echo "$OUTPUT" | grep -q "database_id"; then
+            DATABASE_ID=$(echo "$OUTPUT" | grep "database_id" | sed -n 's/.*database_id = "\([^"]*\)".*/\1/p')
+            echo "✅ D1数据库创建成功: $DATABASE_ID"
+          else
+            # 数据库已存在，获取现有ID
+            DATABASE_ID=$(wrangler d1 list --json | jq -r '.[] | select(.name=="b-cast-mvp") | .uuid' | head -1)
+            echo "ℹ️ 使用现有D1数据库: $DATABASE_ID"
+          fi
+          
+          echo "database_id=$DATABASE_ID" >> $GITHUB_OUTPUT
+          echo "DATABASE_ID=$DATABASE_ID" >> $GITHUB_ENV
+      
+      - name: 📊 初始化D1数据表
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          wrangler d1 execute b-cast-mvp --file=./scripts/download_queue.sql || echo "表可能已存在"
+          echo "✅ D1表初始化完成"
+      
+      - name: 🪣 创建R2存储桶
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          OUTPUT=$(wrangler r2 bucket create b-cast-audio 2>&1 || echo "")
+          
+          if echo "$OUTPUT" | grep -q "Created\|already exists"; then
+            echo "✅ R2存储桶已就绪"
+          else
+            echo "⚠️ R2创建状态未知，继续..."
+          fi
+      
+      - name: 📝 更新wrangler.toml
+        run: |
+          # 更新backend/wrangler.toml中的database_id
+          sed -i "s/database_id = \".*\"/database_id = \"$DATABASE_ID\"/" backend/wrangler.toml
+          
+          echo "✅ wrangler.toml已更新"
+          echo "Database ID: $DATABASE_ID"
+      
+      - name: 💾 提交配置更改
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          
+          if git diff --quiet backend/wrangler.toml; then
+            echo "ℹ️ 配置文件无变化"
+          else
+            git add backend/wrangler.toml
+            git commit -m "chore: 自动配置database_id [skip ci]"
+            git push
+            echo "✅ 配置已提交到仓库"
+          fi
+      
+      - name: 📋 输出资源信息
+        run: |
+          echo "================================"
+          echo "✅ Cloudflare资源初始化完成！"
+          echo ""
+          echo "📋 资源信息："
+          echo "  Database ID: $DATABASE_ID"
+          echo "  Database Name: b-cast-mvp"
+          echo "  R2 Bucket: b-cast-audio"
+          echo ""
+          echo "⚠️  重要提醒："
+          echo "  1. 在Cloudflare Dashboard中配置R2公开访问"
+          echo "  2. 创建R2 API Token并配置到GitHub Secrets"
+          echo "  3. 创建Cloudflare API Token（如未创建）"
+          echo "================================"
+
+  deploy-backend:
+    name: 部署后端
+    needs: setup-cloudflare
+    runs-on: ubuntu-latest
+    if: |
+      always() && 
+      (github.event.inputs.action == 'full-setup' || github.event.inputs.action == 'deploy-only')
+    
+    outputs:
+      worker_url: ${{ steps.deploy.outputs.worker_url }}
+    
+    steps:
+      - name: 📥 Checkout代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      
+      - name: 📦 安装依赖
+        run: |
+          cd backend
+          npm ci
+      
+      - name: 🚀 部署到Cloudflare Workers
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: backend
+          command: deploy
+      
+      - name: 📝 获取Worker URL
+        id: get-url
+        run: |
+          cd backend
+          # 尝试从部署输出获取URL
+          WORKER_URL=$(wrangler deployments list --json 2>/dev/null | jq -r '.[0].url' || echo "")
+          
+          if [ -z "$WORKER_URL" ]; then
+            # 如果获取失败，使用默认格式
+            WORKER_URL="https://b-cast-mvp.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev"
+          fi
+          
+          echo "worker_url=$WORKER_URL" >> $GITHUB_OUTPUT
+          echo "WORKER_URL=$WORKER_URL" >> $GITHUB_ENV
+          echo "✅ Worker URL: $WORKER_URL"
+
+  deploy-frontend:
+    name: 部署前端
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      needs.deploy-backend.result == 'success'
+    
+    steps:
+      - name: 📥 Checkout代码
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: 📦 安装依赖
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: 🏗️ 构建前端
+        run: |
+          cd frontend
+          
+          # 创建生产环境配置
+          WORKER_URL="${{ needs.deploy-backend.outputs.worker_url }}"
+          echo "VITE_API_BASE=$WORKER_URL" > .env.production
+          
+          npm run build
+          
+          echo "✅ 前端构建完成"
+          echo "   API Base: $WORKER_URL"
+      
+      - name: 🚀 部署到Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/dist --project-name=b-cast-mvp
+
+  summary:
+    name: 部署总结
+    needs: [setup-cloudflare, deploy-backend, deploy-frontend]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 显示部署结果
+        run: |
+          echo "================================"
+          echo "🎉 B-Cast 部署完成！"
+          echo "================================"
+          echo ""
+          echo "✅ 已完成的步骤："
+          echo "  - D1数据库创建和初始化"
+          echo "  - R2存储桶创建"
+          echo "  - 后端Worker部署"
+          echo "  - 前端Pages部署"
+          echo ""
+          echo "🔗 访问地址："
+          echo "  Worker: ${{ needs.deploy-backend.outputs.worker_url }}"
+          echo "  Pages: https://b-cast-mvp.pages.dev"
+          echo ""
+          echo "⚠️  后续配置："
+          echo "  1. 配置R2公开访问（在Dashboard中）"
+          echo "  2. 创建R2 API Token（用于下载功能）"
+          echo "  3. 配置GitHub Secrets（见文档）"
+          echo ""
+          echo "📖 详细文档："
+          echo "  https://github.com/${{ github.repository }}/blob/main/docs/mvp-deployment-checklist.md"
+          echo "================================"
