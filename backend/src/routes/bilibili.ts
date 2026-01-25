@@ -1,44 +1,32 @@
 import { Hono } from 'hono';
 import { parseBilibili } from '../services/bilibili';
-import type { Env } from '../types';
 
-export const bilibiliRoutes = new Hono<{ Bindings: Env }>();
+export const bilibiliRoutes = new Hono();
 
-// 解析B站URL
 bilibiliRoutes.post('/parse', async (c) => {
   try {
-    const { url } = await c.req.json<{ url: string }>();
+    const { url } = await c.req.json();
 
     if (!url) {
-      return c.json({
-        success: false,
-        error: '缺少URL参数',
-      }, 400);
+      return c.json({ success: false, error: '缺少URL参数' }, 400);
     }
 
-    // 验证URL格式
-    if (!url.includes('bilibili.com')) {
-      return c.json({
-        success: false,
-        error: '不是有效的B站URL',
-      }, 400);
-    }
+    console.log('📥 Parsing URL:', url);
 
-    console.log('解析B站URL:', url);
+    // 自动识别URL类型并解析
+    // 支持：合集、单视频、UP主空间
     const result = await parseBilibili(url);
 
     return c.json({
       success: true,
-      data: result,
+      data: result
     });
 
-  } catch (error) {
-    console.error('解析失败:', error);
-    const errorMessage = error instanceof Error ? error.message : '解析失败';
-    
+  } catch (error: any) {
+    console.error('❌ 解析失败:', error);
     return c.json({
       success: false,
-      error: errorMessage,
+      error: error.message || '解析失败'
     }, 500);
   }
 });

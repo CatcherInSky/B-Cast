@@ -1,7 +1,5 @@
--- B-Cast MVP - Download Queue Schema
--- 用于Cloudflare D1数据库
-
-CREATE TABLE IF NOT EXISTS download_queue (
+-- B-Cast MVP 下载队列表
+CREATE TABLE download_queue (
   id TEXT PRIMARY KEY,
   bvid TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
@@ -15,11 +13,6 @@ CREATE TABLE IF NOT EXISTS download_queue (
   completed_at INTEGER
 );
 
--- 索引：按状态查询（用于获取待下载列表）
-CREATE INDEX IF NOT EXISTS idx_queue_status ON download_queue(status);
-
--- 索引：按bvid查询（用于检查是否已存在）
-CREATE INDEX IF NOT EXISTS idx_queue_bvid ON download_queue(bvid);
-
--- 索引：按添加时间查询（用于排序）
-CREATE INDEX IF NOT EXISTS idx_queue_added_at ON download_queue(added_at);
+CREATE INDEX idx_queue_status ON download_queue(status);
+CREATE INDEX idx_queue_bvid ON download_queue(bvid);
+CREATE INDEX idx_queue_added_at ON download_queue(added_at);

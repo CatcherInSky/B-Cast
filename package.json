@@ -4,16 +4,13 @@
   "description": "开源的个人PWA音频播放器，支持从B站自动下载和管理音频内容",
   "private": true,
   "scripts": {
-    "init": "node scripts/init-cloudflare.js",
-    "init:bash": "bash scripts/init-cloudflare.sh",
-    "check-env": "node scripts/check-deployment.js",
-    "deploy": "node scripts/deploy.js",
-    "deploy:bash": "bash scripts/deploy.sh",
-    "deploy:backend": "cd backend && wrangler deploy",
-    "deploy:frontend": "cd frontend && npm run build && wrangler pages deploy dist",
+    "setup": "bash scripts/setup.sh",
+    "check-env": "bash scripts/check-env.sh",
     "dev:backend": "cd backend && wrangler dev",
     "dev:frontend": "cd frontend && npm run dev",
-    "build:frontend": "cd frontend && npm run build"
+    "deploy:backend": "cd backend && wrangler deploy",
+    "build:frontend": "cd frontend && npm run build",
+    "install:all": "cd frontend && npm install && cd ../backend && npm install"
   },
   "keywords": [
     "bilibili",

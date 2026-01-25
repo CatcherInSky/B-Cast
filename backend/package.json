@@ -1,29 +1,18 @@
 {
   "name": "b-cast-backend",
   "version": "0.1.0",
-  "description": "B-Cast MVP Backend - Cloudflare Workers API",
+  "description": "B-Cast API Backend on Cloudflare Workers",
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "tail": "wrangler tail",
-    "build": "tsc",
-    "predeploy": "npm run check-env",
-    "check-env": "node ../scripts/check-deployment.js"
+    "deploy": "wrangler deploy"
   },
-  "keywords": [
-    "cloudflare",
-    "workers",
-    "bilibili",
-    "audio"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "hono": "^3.12.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240117.0",
+    "@cloudflare/workers-types": "^4.20231218.0",
+    "typescript": "^5.3.3",
     "wrangler": "^3.22.0"
   }
 }

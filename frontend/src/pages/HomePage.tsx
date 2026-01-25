@@ -1,89 +1,68 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db';
+import { db, Playlist } from '../db';
 import { AddPlaylist } from '../components/AddPlaylist';
 import { PlaylistCard } from '../components/PlaylistCard';
 
 export function HomePage() {
-  const playlists = useLiveQuery(() => db.playlists.orderBy('createdAt').reverse().toArray());
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleSuccess = () => {
-    setRefreshKey(prev => prev + 1);
+  useEffect(() => {
+    loadPlaylists();
+  }, []);
+
+  const loadPlaylists = async () => {
+    try {
+      const playlists = await db.playlists.orderBy('createdAt').reverse().toArray();
+      setPlaylists(playlists);
+    } catch (error) {
+      console.error('加载播放列表失败:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-900">B-Cast MVP</h1>
-            <nav className="flex gap-4">
-              <Link 
-                to="/" 
-                className="text-gray-900 font-medium"
-              >
-                播放列表
-              </Link>
-              <Link 
-                to="/downloads" 
-                className="text-gray-600 hover:text-gray-900"
-              >
-                下载状态
-              </Link>
-            </nav>
-          </div>
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">B-Cast</h1>
+          <p className="text-gray-600">音频播放列表管理 - MVP版本</p>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          {/* 添加播放列表 */}
-          <AddPlaylist onSuccess={handleSuccess} />
+        <AddPlaylist onSuccess={loadPlaylists} />
 
-          {/* 播放列表列表 */}
+        {loading ? (
+          <div className="text-center py-8 text-gray-500">加载中...</div>
+        ) : playlists.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-lg shadow">
+            <p className="text-gray-500 mb-2">暂无播放列表</p>
+            <p className="text-sm text-gray-400">在上方添加一个B站URL开始使用</p>
+          </div>
+        ) : (
           <div>
             <h2 className="text-xl font-bold mb-4">我的播放列表</h2>
-            
-            {!playlists ? (
-              <div className="text-center py-8 text-gray-500">加载中...</div>
-            ) : playlists.length === 0 ? (
-              <div className="card text-center py-8">
-                <p className="text-gray-500 mb-4">还没有播放列表</p>
-                <p className="text-sm text-gray-400">在上方输入B站URL添加第一个播放列表吧！</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {playlists.map(playlist => (
-                  <PlaylistCard
-                    key={playlist.id}
-                    playlist={playlist}
-                    onDelete={handleSuccess}
-                  />
-                ))}
-              </div>
-            )}
+            {playlists.map(playlist => (
+              <PlaylistCard
+                key={playlist.id}
+                playlist={playlist}
+                onDelete={loadPlaylists}
+              />
+            ))}
           </div>
-        </div>
-      </main>
+        )}
 
-      {/* Footer */}
-      <footer className="mt-12 pb-8 text-center text-sm text-gray-500">
-        <p>B-Cast MVP - 开源的个人音频播放器</p>
-        <p className="mt-1">
-          <a 
-            href="https://github.com/YOUR_USERNAME/B-Cast" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline"
-          >
-            GitHub
-          </a>
-        </p>
-      </footer>
+        <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+          <h3 className="font-bold mb-2">💡 如何下载音频？</h3>
+          <ol className="text-sm space-y-1 list-decimal list-inside text-gray-700">
+            <li>添加播放列表后，视频会自动加入下载队列</li>
+            <li>前往GitHub仓库的 Actions 标签页</li>
+            <li>选择 "Download Audio (MVP)" workflow</li>
+            <li>点击 "Run workflow" 按钮手动触发下载</li>
+            <li>等待任务完成后，刷新页面查看结果</li>
+          </ol>
+        </div>
+      </div>
     </div>
   );
 }

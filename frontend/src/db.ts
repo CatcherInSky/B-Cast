@@ -1,10 +1,12 @@
+// IndexedDB Schema using Dexie.js
 import Dexie, { Table } from 'dexie';
 
 export interface Playlist {
   id: string;
   name: string;
-  type: 'collection' | 'uploader' | 'single';
+  type: 'collection' | 'uploader';
   bilibiliUrl: string;
+  rssUrl?: string; // RSS订阅地址
   uploaderName: string;
   cover?: string;
   description?: string;
