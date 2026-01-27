@@ -164,10 +164,9 @@ def upload_to_r2_via_wrangler(local_path, bvid):
         if result.returncode != 0:
             raise Exception(f"Wrangler上传失败: {result.stderr}")
         
-        # 生成R2公开URL
-        # 注意：需要在Cloudflare Dashboard中为R2 bucket配置自定义域名或公开访问
-        # 这里使用占位符，实际部署时需要替换
-        audio_url = f"{WORKER_URL}/api/audio/{bvid}.m4a"
+        # 生成音频访问URL（通过Worker API）
+        # 音频文件存储在R2的 audio/{bvid}.m4a，通过Worker API访问
+        audio_url = f"{WORKER_URL}/api/downloads/audio/{bvid}"
         
         return audio_url
         

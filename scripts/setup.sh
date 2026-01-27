@@ -28,9 +28,9 @@ wrangler login
 
 echo ""
 echo "📦 创建D1数据库..."
-echo "请输入数据库名称 (默认: b-cast-mvp):"
+echo "请输入数据库名称 (默认: b-cast):"
 read -r db_name
-db_name=${db_name:-b-cast-mvp}
+db_name=${db_name:-b-cast}
 
 # 创建D1数据库
 db_output=$(wrangler d1 create "$db_name" 2>&1)

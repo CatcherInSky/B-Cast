@@ -32,7 +32,7 @@ export class BCastDB extends Dexie {
   playlistItems!: Table<PlaylistItem>;
   
   constructor() {
-    super('b-cast-mvp');
+    super('b-cast');
     this.version(1).stores({
       playlists: 'id, name, createdAt',
       playlistItems: 'id, playlistId, bvid, downloadStatus, addedAt'

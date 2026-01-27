@@ -1,34 +1,22 @@
-name = "b-cast-mvp"
+name = "b-cast"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
 # D1 Database binding
 [[d1_databases]]
 binding = "DB"
-database_name = "b-cast-mvp"
-database_id = "e0dae4e1-ceda-467d-b7cb-0f437819eaf7" # 填写创建后的 database_id
+database_name = "b-cast"
+database_id = "671fbc13-8c07-456f-8a27-1b7fdaa33df8"
 
 # R2 Storage binding
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "b-cast-audio"
+bucket_name = "b-cast"
 
-# Cron Triggers - 定时任务
-# 每天凌晨2点（UTC时间）检查订阅更新
+# Cron Triggers
 [triggers]
 crons = ["0 2 * * *"]
 
 # Environment variables
 [vars]
-# 重要：替换为你的实际Worker URL（不要包含 https://）
-# 本地开发时可以留空，会自动使用 localhost
-# 生产环境务必设置正确的域名
-WORKER_URL = "b-cast-mvp.your-subdomain.workers.dev"  # 替换为你的实际Worker URL
-
-# Secrets (敏感信息通过 wrangler secret 命令添加)
-# - GITHUB_TOKEN: GitHub Personal Access Token (可选，用于触发GitHub Action)
-# - GITHUB_REPO: GitHub仓库 (格式: owner/repo，可选)
-# 
-# 添加方法:
-#   wrangler secret put GITHUB_TOKEN
-#   wrangler secret put GITHUB_REPO
+WORKER_URL = "b-cast.zhangchunxiang98.workers.dev"

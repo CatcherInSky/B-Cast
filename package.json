@@ -3,14 +3,25 @@
   "version": "0.1.0",
   "description": "开源的个人PWA音频播放器，支持从B站自动下载和管理音频内容",
   "private": true,
+  "type": "module",
   "scripts": {
+    "init": "node scripts/init.js",
+    "deploy": "node scripts/deploy.js",
+    "dev:local": "concurrently \"pnpm dev:backend:local\" \"pnpm dev:frontend\"",
+    "dev:local:remote": "concurrently \"pnpm dev:backend:remote\" \"pnpm dev:frontend\"",
+    "dev:backend": "node scripts/init-local-db.js && cd backend && pnpm exec wrangler dev --local",
+    "dev:backend:local": "node scripts/init-local-db.js && cd backend && pnpm exec wrangler dev --local",
+    "dev:backend:remote": "cd backend && pnpm exec wrangler dev --remote",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "test:download:local-to-local": "node scripts/test-download-local-to-local.js",
+    "test:download:local-to-remote": "node scripts/test-download-local-to-remote.js",
+    "test:download:remote-to-remote": "node scripts/test-download-remote-to-remote.js",
+    "list:r2": "node scripts/list-local-r2.js",
+    "view:rss": "node scripts/view-rss.js",
     "setup": "bash scripts/setup.sh",
     "check-env": "bash scripts/check-env.sh",
-    "dev:backend": "cd backend && wrangler dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "deploy:backend": "cd backend && wrangler deploy",
-    "build:frontend": "cd frontend && npm run build",
-    "install:all": "cd frontend && npm install && cd ../backend && npm install"
+    "install:all": "cd frontend && npm install && cd ../backend && pnpm install"
   },
   "keywords": [
     "bilibili",
@@ -23,5 +34,8 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }

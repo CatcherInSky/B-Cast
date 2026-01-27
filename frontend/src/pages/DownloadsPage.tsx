@@ -45,6 +45,7 @@ export function DownloadsPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'completed':
       case 'downloaded': return 'text-green-600';
       case 'downloading': return 'text-blue-600';
       case 'failed': return 'text-red-600';
@@ -54,6 +55,7 @@ export function DownloadsPage() {
 
   const getStatusText = (status: string) => {
     switch (status) {
+      case 'completed':
       case 'downloaded': return '已完成';
       case 'downloading': return '下载中';
       case 'failed': return '失败';
@@ -112,16 +114,32 @@ export function DownloadsPage() {
                   </div>
                 )}
 
-                {item.audioUrl && (
-                  <div className="mt-2">
-                    <a
-                      href={item.audioUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      查看音频文件 →
-                    </a>
+                {item.status === 'completed' && (
+                  <div className="mt-3 pt-3 border-t">
+                    {item.audioUrl ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <audio
+                            controls
+                            src={item.audioUrl}
+                            className="flex-1 h-10"
+                            preload="metadata"
+                          />
+                        </div>
+                        <a
+                          href={item.audioUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                        >
+                          🔗 在新标签页中打开音频文件
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500 bg-yellow-50 p-2 rounded">
+                        ⚠️ 音频URL未设置，请检查后端配置或刷新页面
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

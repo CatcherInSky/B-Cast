@@ -104,6 +104,37 @@ downloadRoutes.get('/status', async (c) => {
   }
 });
 
+// 列出 R2 中的文件（用于调试）
+downloadRoutes.get('/list-r2', async (c) => {
+  try {
+    const prefix = c.req.query('prefix') || '';
+    const limit = parseInt(c.req.query('limit') || '100', 10);
+    
+    const listed = await c.env.BUCKET.list({
+      prefix,
+      limit,
+    });
+    
+    const files = listed.objects.map(obj => ({
+      key: obj.key,
+      size: obj.size,
+      uploaded: obj.uploaded,
+    }));
+    
+    return c.json({
+      success: true,
+      files,
+      truncated: listed.truncated,
+    });
+  } catch (error: any) {
+    console.error('列出R2文件失败:', error);
+    return c.json({
+      success: false,
+      error: error.message,
+    }, 500);
+  }
+});
+
 // 获取所有下载记录（用于调试）
 downloadRoutes.get('/list', async (c) => {
   try {
@@ -212,6 +243,89 @@ downloadRoutes.post('/update-status', async (c) => {
       success: false, 
       error: error.message 
     }, 500);
+  }
+});
+
+// 上传音频文件到R2（用于测试脚本）
+downloadRoutes.post('/upload-audio', async (c) => {
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File;
+    const bvid = formData.get('bvid') as string;
+
+    if (!file || !bvid) {
+      return c.json({ 
+        success: false, 
+        error: '缺少必需参数: file 和 bvid' 
+      }, 400);
+    }
+
+    const audioKey = `audio/${bvid}.m4a`;
+    console.log(`📤 上传音频文件到R2: ${audioKey}, 大小: ${file.size} bytes`);
+
+    // 将文件转换为 ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
+    
+    await c.env.BUCKET.put(audioKey, arrayBuffer, {
+      httpMetadata: {
+        contentType: 'audio/mp4',
+      },
+    });
+
+    console.log(`✅ 音频文件已上传到R2: ${audioKey}`);
+
+    // 生成访问URL
+    const baseUrl = c.env.WORKER_URL 
+      ? (c.env.WORKER_URL.startsWith('http') ? c.env.WORKER_URL : `https://${c.env.WORKER_URL}`)
+      : new URL(c.req.url).origin;
+    
+    const audioUrl = `${baseUrl}/api/downloads/audio/${bvid}`;
+
+    return c.json({
+      success: true,
+      audioUrl,
+      fileSize: file.size,
+    });
+
+  } catch (error: any) {
+    console.error('❌ 上传音频失败:', error);
+    return c.json({ 
+      success: false, 
+      error: error.message 
+    }, 500);
+  }
+});
+
+// 获取音频文件（从R2）
+downloadRoutes.get('/audio/:bvid', async (c) => {
+  try {
+    const bvid = c.req.param('bvid');
+    const audioKey = `audio/${bvid}.m4a`;
+
+    console.log(`📥 请求音频文件: ${audioKey}`);
+
+    const object = await c.env.BUCKET.get(audioKey);
+
+    if (!object) {
+      console.log(`❌ 音频文件不存在: ${audioKey}`);
+      return c.text('Audio file not found', 404);
+    }
+
+    const audioData = await object.arrayBuffer();
+    console.log(`✅ 成功获取音频文件: ${audioKey}, 大小: ${audioData.byteLength} bytes`);
+
+    return new Response(audioData, {
+      headers: {
+        'Content-Type': 'audio/mp4',
+        'Content-Length': audioData.byteLength.toString(),
+        'Cache-Control': 'public, max-age=86400', // 缓存24小时
+        'Accept-Ranges': 'bytes', // 支持范围请求，用于音频播放
+      },
+    });
+
+  } catch (error: any) {
+    console.error('❌ 获取音频失败:', error);
+    return c.text('Failed to fetch audio file', 500);
   }
 });
 

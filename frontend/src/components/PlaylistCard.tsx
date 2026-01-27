@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db, Playlist, PlaylistItem } from '../db';
 import { AudioPlayer } from './AudioPlayer';
+import { syncMultipleDownloadStatus, getAudioUrl } from '../utils/downloads';
 
 interface PlaylistCardProps {
   playlist: Playlist;
@@ -23,6 +24,21 @@ export function PlaylistCard({ playlist, onDelete }: PlaylistCardProps) {
       .equals(playlist.id)
       .sortBy('pubDate');
     setItems(items);
+    
+    // 同步下载状态（如果状态不是 completed 或没有 audioUrl）
+    const bvidsToSync = items
+      .filter(item => item.downloadStatus !== 'downloaded' || !item.audioUrl)
+      .map(item => item.bvid);
+    
+    if (bvidsToSync.length > 0) {
+      await syncMultipleDownloadStatus(bvidsToSync);
+      // 重新加载以获取更新后的数据
+      const updatedItems = await db.playlistItems
+        .where('playlistId')
+        .equals(playlist.id)
+        .sortBy('pubDate');
+      setItems(updatedItems);
+    }
   };
 
   const handleDelete = async () => {
@@ -149,12 +165,32 @@ export function PlaylistCard({ playlist, onDelete }: PlaylistCardProps) {
                 {getStatusText(item.downloadStatus)}
               </div>
 
-              {item.downloadStatus === 'downloaded' && item.audioUrl && (
+              {item.downloadStatus === 'downloaded' && (
                 <button
-                  onClick={() => setSelectedItem(item)}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded whitespace-nowrap"
+                  onClick={async () => {
+                    // 确保有 audioUrl，如果没有则从后端获取
+                    let audioUrl = item.audioUrl;
+                    if (!audioUrl) {
+                      const fetchedUrl = await getAudioUrl(item.bvid);
+                      if (fetchedUrl) {
+                        audioUrl = fetchedUrl;
+                        // 更新本地数据
+                        await db.playlistItems.update(item.id, { audioUrl });
+                        // 重新加载
+                        loadItems();
+                      }
+                    }
+                    
+                    if (audioUrl) {
+                      setSelectedItem({ ...item, audioUrl });
+                    } else {
+                      alert('无法获取音频文件URL，请刷新页面重试');
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded whitespace-nowrap flex items-center gap-1 transition-colors"
                 >
-                  测试播放
+                  <span>▶</span>
+                  <span>播放</span>
                 </button>
               )}
             </div>
