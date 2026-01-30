@@ -167,16 +167,21 @@ downloadRoutes.get('/list', async (c) => {
 });
 
 // 获取待下载的任务列表（供GitHub Action调用）
+// 支持 ?limit=N 控制单次返回数量，避免单次 Action 下载过多导致超时或 B 站限流（默认 50，最大 50）
 downloadRoutes.get('/pending', async (c) => {
   try {
+    const limitParam = c.req.query('limit');
+    const limit = limitParam
+      ? Math.min(Math.max(1, parseInt(limitParam, 10)), 50)
+      : 50;
     const db = c.env.DB;
     const result = await db.prepare(`
       SELECT id, bvid, title, duration
       FROM download_queue
       WHERE status = 'pending'
       ORDER BY added_at ASC
-      LIMIT 50
-    `).all();
+      LIMIT ?
+    `).bind(limit).all();
 
     const items = result.results.map((row: any) => ({
       id: row.id,
@@ -296,11 +301,24 @@ downloadRoutes.post('/upload-audio', async (c) => {
   }
 });
 
-// 获取音频文件（从R2）
-downloadRoutes.get('/audio/:bvid', async (c) => {
+// 获取音频文件（从R2）。支持 /audio/:bvid 或 /audio/:bvid.:ext（如 BV1xx.m4a）
+const AUDIO_CONTENT_TYPES: Record<string, string> = {
+  m4a: 'audio/mp4',
+  mp4: 'audio/mp4',
+  webm: 'audio/webm',
+  opus: 'audio/opus',
+  ogg: 'audio/ogg',
+  mp3: 'audio/mpeg',
+  aac: 'audio/aac',
+};
+
+downloadRoutes.get('/audio/:bvidOrPath', async (c) => {
   try {
-    const bvid = c.req.param('bvid');
-    const audioKey = `audio/${bvid}.m4a`;
+    const bvidOrPath = c.req.param('bvidOrPath');
+    const dotIdx = bvidOrPath.indexOf('.');
+    const bvid = dotIdx >= 0 ? bvidOrPath.slice(0, dotIdx) : bvidOrPath;
+    const ext = dotIdx >= 0 ? bvidOrPath.slice(dotIdx + 1) : 'm4a';
+    const audioKey = `audio/${bvid}.${ext}`;
 
     console.log(`📥 请求音频文件: ${audioKey}`);
 
@@ -312,17 +330,16 @@ downloadRoutes.get('/audio/:bvid', async (c) => {
     }
 
     const audioData = await object.arrayBuffer();
-    console.log(`✅ 成功获取音频文件: ${audioKey}, 大小: ${audioData.byteLength} bytes`);
+    const contentType = AUDIO_CONTENT_TYPES[ext] || 'application/octet-stream';
 
     return new Response(audioData, {
       headers: {
-        'Content-Type': 'audio/mp4',
+        'Content-Type': contentType,
         'Content-Length': audioData.byteLength.toString(),
-        'Cache-Control': 'public, max-age=86400', // 缓存24小时
-        'Accept-Ranges': 'bytes', // 支持范围请求，用于音频播放
+        'Cache-Control': 'public, max-age=86400',
+        'Accept-Ranges': 'bytes',
       },
     });
-
   } catch (error: any) {
     console.error('❌ 获取音频失败:', error);
     return c.text('Failed to fetch audio file', 500);
@@ -343,7 +360,7 @@ downloadRoutes.post('/trigger-download', async (c) => {
 
     // 调用GitHub API触发workflow
     const response = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/download.yml/dispatches`,
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/download-audio.yml/dispatches`,
       {
         method: 'POST',
         headers: {

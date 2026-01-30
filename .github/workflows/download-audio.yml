@@ -1,10 +1,14 @@
 name: Download Audio from Bilibili
 
 on:
-  # 允许手动触发
+  # 允许手动触发，可指定单次最多下载条数（避免超时/B站限流）
   workflow_dispatch:
-  
-  # 也可以通过API触发
+    inputs:
+      limit:
+        description: '单次最多下载条数（留空默认 50，建议 5–20 防限流）'
+        required: false
+        default: ''
+  # 也可以通过 API 触发
   repository_dispatch:
     types: [download-audio]
 
@@ -39,8 +43,14 @@ jobs:
       
       - name: Get pending downloads from Worker API
         id: get-pending
+        env:
+          PENDING_LIMIT: ${{ inputs.limit }}
         run: |
-          RESPONSE=$(curl -s "${{ secrets.WORKER_URL }}/api/downloads/pending")
+          if [ -n "$PENDING_LIMIT" ]; then
+            RESPONSE=$(curl -s "${{ secrets.WORKER_URL }}/api/downloads/pending?limit=$PENDING_LIMIT")
+          else
+            RESPONSE=$(curl -s "${{ secrets.WORKER_URL }}/api/downloads/pending")
+          fi
           echo "response=$RESPONSE" >> $GITHUB_OUTPUT
           COUNT=$(echo $RESPONSE | jq -r '.count')
           echo "count=$COUNT" >> $GITHUB_OUTPUT
@@ -54,6 +64,7 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
           BILIBILI_SESSDATA: ${{ secrets.BILIBILI_SESSDATA }}
+          DOWNLOAD_LIMIT: ${{ inputs.limit }}
         run: |
           python scripts/download_worker.py
       
