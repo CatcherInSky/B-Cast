@@ -119,6 +119,13 @@ function generateWranglerToml(env) {
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
+# 静态资源：前端构建产物与 Worker 一起部署（同域，无需 CORS）
+[assets]
+directory = "../frontend/dist"
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/health"]
+
 # D1 Database binding
 [[d1_databases]]
 binding = "DB"
@@ -140,7 +147,7 @@ WORKER_URL = "${workerUrl}"
 `;
   
   writeFileSync(wranglerPath, content);
-  log('✓ wrangler.toml 已生成', 'green');
+  log('✓ wrangler.toml 已生成（含 assets 同域部署）', 'green');
 }
 
 function deployBackend(env) {
@@ -247,11 +254,27 @@ function deployBackend(env) {
   });
 }
 
-function buildFrontend() {
+function buildFrontend(apiBaseForBuild) {
   log('\n📦 构建前端...', 'blue');
   
+  // 与 Worker 同域部署时用空字符串（相对路径 /api）；单独部署前端时需传 Worker URL
+  const apiBase = apiBaseForBuild
+    ? (apiBaseForBuild.startsWith('http') ? apiBaseForBuild : `https://${apiBaseForBuild}`)
+    : '';
+  if (apiBase) {
+    log(`  VITE_API_BASE=${apiBase}（前端单独部署时使用）`, 'cyan');
+  } else {
+    log('  VITE_API_BASE=空（与 Worker 同域，使用相对路径 /api）', 'cyan');
+  }
+  
   try {
-    exec('cd frontend && npm run build');
+    const buildEnv = { ...process.env, VITE_API_BASE: apiBase };
+    execSync('npm run build', {
+      cwd: join(rootDir, 'frontend'),
+      encoding: 'utf8',
+      stdio: 'inherit',
+      env: buildEnv
+    });
     log('✓ 前端构建完成', 'green');
   } catch (error) {
     log('❌ 前端构建失败', 'red');
@@ -298,26 +321,29 @@ async function main() {
   // 3. 检查 wrangler 登录状态
   checkWranglerLogin();
   
-  // 4. 生成/更新 wrangler.toml
+  // 4. 生成/更新 wrangler.toml（含 assets 配置时需先有 frontend/dist）
   generateWranglerToml(env);
   
-  // 5. 部署后端
+  // 5. 先构建前端（与 Worker 同域部署时用空 API_BASE；仅跳过后端时用 Worker URL 供单独部署）
+  if (!skipFrontend) {
+    const sameOrigin = !skipBackend;
+    buildFrontend(sameOrigin ? '' : (env.WORKER_URL || ''));
+  } else {
+    log('\n⚠️  跳过前端构建 (--skip-frontend)', 'yellow');
+  }
+  
+  // 6. 部署后端（Worker + 静态资源一起上传）
   let workerUrl = null;
   if (!skipBackend) {
     workerUrl = await deployBackend(env);
+    if (!skipFrontend) {
+      log('\n📝 前端已随 Worker 一起部署，访问同一域名即可使用', 'green');
+    }
   } else {
     log('\n⚠️  跳过后端部署 (--skip-backend)', 'yellow');
-  }
-  
-  // 6. 构建前端
-  if (!skipFrontend) {
-    buildFrontend();
-    log('\n📝 前端构建完成，可以手动部署到静态托管服务:', 'yellow');
-    log('   - GitHub Pages: 通过 GitHub Actions 自动部署', 'cyan');
-    log('   - Cloudflare Pages: 手动上传 frontend/dist 目录', 'cyan');
-    log('   - Vercel: 手动上传 frontend/dist 目录', 'cyan');
-  } else {
-    log('\n⚠️  跳过前端构建 (--skip-frontend)', 'yellow');
+    if (!skipFrontend) {
+      log('📝 前端已构建，可手动部署 frontend/dist 到静态托管', 'cyan');
+    }
   }
   
   // 7. 完成
@@ -326,14 +352,18 @@ async function main() {
   log('╚════════════════════════════════════════╝', 'green');
   
   if (workerUrl) {
-    log('\n📡 Worker URL:', 'blue');
+    log('\n📡 Worker URL（请务必带 https:// 访问）:', 'blue');
     log(`   https://${workerUrl}`, 'cyan');
-    log('\n📝 测试部署:', 'blue');
+    log('\n📝 本地测试:', 'blue');
     log(`   curl https://${workerUrl}/health`, 'cyan');
+    log('\n⚠️  若浏览器连接超时:', 'yellow');
+    log('   - 确认使用 https:// 而不是 http://', 'cyan');
+    log('   - 国内网络可能无法访问 workers.dev，可换网络/VPN 或绑定自定义域名', 'cyan');
+    log('   - 详见 docs/DEPLOY-TROUBLESHOOTING.md', 'cyan');
   }
   
   log('\n📋 下一步:', 'blue');
-  log('   1. 测试添加订阅', 'cyan');
+  log('   1. 在浏览器打开 https://' + (workerUrl || '你的Worker') + ' 测试', 'cyan');
   log('   2. 配置 GitHub Actions（如需自动下载）', 'cyan');
   log('   3. 部署前端到静态托管服务', 'cyan');
   log('');

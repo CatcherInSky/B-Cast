@@ -8,6 +8,7 @@ import { checkSubscriptionUpdates } from './services/cron';
 type Bindings = {
   DB: D1Database;
   BUCKET: R2Bucket;
+  ASSETS?: Fetcher; // 静态资源（与 Worker 同域部署时由 wrangler 注入）
   WORKER_URL?: string;
   GITHUB_TOKEN?: string;
   GITHUB_REPO?: string; // 格式: owner/repo
@@ -18,6 +19,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 // CORS（允许所有来源，因为MVP版本没有认证）
 app.use('*', cors());
 
+// 根路径 / 由 Static Assets 提供 index.html（SPA），不经过 Worker
 // 健康检查
 app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: Date.now() });
