@@ -106,14 +106,25 @@ def download_audio(bvid, title):
     temp_dir.mkdir(exist_ok=True)
     output_path = temp_dir / bvid
 
-    # 直接使用命令行执行 yt-dlp，完全按照本地成功的命令（不添加任何多余参数）
+    # 使用 yt-dlp 命令行下载音频，优先 m4a（不转码，缩短 Action 执行时间）
     # 使用 %(id)s 与本地命令完全一致，通过工作目录指定输出位置
+    # 注意：GitHub Actions 环境中需要添加 User-Agent 和 Referer 头以避免 412 错误
     cmd = [
         'yt-dlp',
         '-f', 'bestaudio[ext=m4a]/bestaudio',
         '-o', '%(id)s.%(ext)s',  # 完全按照本地成功的命令格式
         url
     ]
+    
+    # 添加必要的请求头以避免 412 错误（B站反爬虫检查）
+    # User-Agent: 必须看起来像真实浏览器
+    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    cmd.insert(-1, '--add-header')
+    cmd.insert(-1, f'User-Agent:{user_agent}')
+    
+    # Referer: 必须来自 bilibili.com
+    cmd.insert(-1, '--add-header')
+    cmd.insert(-1, 'Referer:https://www.bilibili.com/')
     
     # 如果有 Cookie，添加到命令中
     if BILIBILI_SESSDATA:
