@@ -106,24 +106,7 @@ def download_audio(bvid, title):
     temp_dir.mkdir(exist_ok=True)
     output_path = temp_dir / bvid
 
-    # 构建完整的浏览器请求头，避免 B站 412 错误
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://www.bilibili.com/',
-        'Origin': 'https://www.bilibili.com',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
-        'Upgrade-Insecure-Requests': '1',
-    }
-    
-    # 如果有 Cookie，添加到请求头
-    if BILIBILI_SESSDATA:
-        headers['Cookie'] = f'SESSDATA={BILIBILI_SESSDATA}'
-
+    # 简化配置：yt-dlp 会自动处理请求头，不需要手动设置复杂的 headers
     # 优先 m4a，否则任意最佳音频；不启用 FFmpeg 后处理，避免转码耗时
     ydl_opts = {
         'format': 'bestaudio[ext=m4a]/bestaudio',
@@ -132,8 +115,16 @@ def download_audio(bvid, title):
         'no_warnings': False,
         'retries': 3,
         'fragment_retries': 3,
-        'http_headers': headers,  # 始终设置请求头，避免 412 错误
     }
+    
+    # 如果有 Cookie，通过 cookies 参数传递（可选，大多数公开视频不需要）
+    if BILIBILI_SESSDATA:
+        # yt-dlp 支持通过 http_headers 传递 Cookie
+        if BILIBILI_SESSDATA.startswith('SESSDATA=') or '=' in BILIBILI_SESSDATA:
+            ydl_opts['http_headers'] = {'Cookie': BILIBILI_SESSDATA}
+        else:
+            ydl_opts['http_headers'] = {'Cookie': f'SESSDATA={BILIBILI_SESSDATA}'}
+        print(f"   🔐 使用 Cookie 进行下载")
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
