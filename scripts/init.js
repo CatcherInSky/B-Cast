@@ -568,9 +568,24 @@ crons = ["0 2 * * *"]
 # Environment variables
 [vars]
 WORKER_URL = "${workerUrl}"
+GITHUB_REPO = "${env.GITHUB_REPO || ''}"
 `;
   
   writeFileSync(wranglerPath, content);
+}
+
+/** 从 git remote origin 解析出 owner/repo，失败返回 null */
+function getGitHubRepoFromRemote() {
+  try {
+    const url = exec('git remote get-url origin', { silent: true });
+    if (!url || typeof url !== 'string') return null;
+    const trimmed = url.trim();
+    // https://github.com/owner/repo.git 或 git@github.com:owner/repo.git
+    const m = trimmed.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/i);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
 }
 
 function printGitHubSecretsInfo(env) {
@@ -590,8 +605,10 @@ function printGitHubSecretsInfo(env) {
   log(`  - D1_DATABASE_ID = "${env.D1_DATABASE_ID || ''}"`);
   log(`  - R2_BUCKET_NAME = "${env.R2_BUCKET_NAME || 'b-cast'}"`);
   log('');
-  log('可选（下载功能）:', 'cyan');
+  log('可选（下载功能 / 触发下载）:', 'cyan');
   log(`  - WORKER_URL = "${env.WORKER_URL || ''}"`);
+  log(`  - GITHUB_REPO = "${env.GITHUB_REPO || ''}"（init 已根据 git 写入 .env）`);
+  log('  - GITHUB_TOKEN：需在 GitHub 创建 PAT（勾选 actions: write），见 README');
   log('');
   log('════════════════════════════════════════', 'blue');
 }
@@ -631,6 +648,23 @@ async function main() {
   }
   saveEnv(env);
   log('\n✓ 配置已保存到 .env 文件', 'green');
+  
+  // 5b. GITHUB_REPO（用于「访问链接即触发下载」）：根据 git remote 自动写入，或询问
+  if (!env.GITHUB_REPO || !env.GITHUB_REPO.trim()) {
+    const fromGit = getGitHubRepoFromRemote();
+    if (fromGit) {
+      env.GITHUB_REPO = fromGit;
+      saveEnv(env);
+      log(`✓ 已根据 git remote 写入 GITHUB_REPO=${fromGit}`, 'green');
+    } else {
+      const answer = await question('请输入 GITHUB_REPO（格式 owner/repo，用于「访问链接即触发下载」，可留空稍后填）: ');
+      if (answer && answer.trim()) {
+        env.GITHUB_REPO = answer.trim();
+        saveEnv(env);
+        log(`✓ 已写入 GITHUB_REPO=${env.GITHUB_REPO}`, 'green');
+      }
+    }
+  }
   
   // 6. 初始化远程数据库
   if (!skipDbInit) {

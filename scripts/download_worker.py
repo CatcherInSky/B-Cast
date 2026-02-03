@@ -20,13 +20,13 @@ except ImportError:
     sys.exit(1)
 
 # 环境变量
-WORKER_URL = os.environ.get('WORKER_URL')
-CLOUDFLARE_API_TOKEN = os.environ.get('CLOUDFLARE_API_TOKEN')
-CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID')
-R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'b-cast-audio')
-BILIBILI_SESSDATA = os.environ.get('BILIBILI_SESSDATA')  # B站Cookie，用于下载受限视频
+WORKER_URL = os.environ.get('WORKER_URL', '').strip()
+CLOUDFLARE_API_TOKEN = os.environ.get('CLOUDFLARE_API_TOKEN', '').strip()
+CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID', '').strip()
+R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'b-cast-audio').strip()
+BILIBILI_SESSDATA = os.environ.get('BILIBILI_SESSDATA', '').strip()  # B站Cookie，用于下载受限视频
 
-# 验证环境变量
+# 验证环境变量（检查是否为空字符串）
 required_vars = {
     'WORKER_URL': WORKER_URL,
     'CLOUDFLARE_API_TOKEN': CLOUDFLARE_API_TOKEN,
@@ -36,10 +36,19 @@ required_vars = {
 missing = [k for k, v in required_vars.items() if not v]
 if missing:
     print(f"❌ Missing environment variables: {', '.join(missing)}")
+    print(f"   WORKER_URL = '{WORKER_URL}'")
+    print(f"   CLOUDFLARE_API_TOKEN = {'***' if CLOUDFLARE_API_TOKEN else '(empty)'}")
+    print(f"   CLOUDFLARE_ACCOUNT_ID = {'***' if CLOUDFLARE_ACCOUNT_ID else '(empty)'}")
     sys.exit(1)
 
-# 确保WORKER_URL格式正确
-WORKER_URL = WORKER_URL.rstrip('/')
+# 确保WORKER_URL格式正确：自动添加 https:// 前缀（如果缺失）
+if WORKER_URL:
+    if not WORKER_URL.startswith(('http://', 'https://')):
+        WORKER_URL = f'https://{WORKER_URL}'
+    WORKER_URL = WORKER_URL.rstrip('/')
+else:
+    print("❌ WORKER_URL is empty after processing")
+    sys.exit(1)
 
 def get_pending_downloads(limit=None):
     """从Worker API获取待下载任务。limit 为单次最多条数，用于控制每轮下载量（防超时/限流）。"""
@@ -167,7 +176,22 @@ def main():
     print("🚀 B-Cast Download Worker")
     print(f"📅 {datetime.now().isoformat()}")
     print(f"🌐 Worker URL: {WORKER_URL}")
+    # 调试信息：显示 URL 是否包含协议
+    if WORKER_URL.startswith(('http://', 'https://')):
+        print(f"   ✓ URL 格式正确（包含协议）")
+    else:
+        print(f"   ⚠️  URL 格式可能有问题（缺少协议）")
     print()
+    
+    # 初始化 summary，确保即使失败也能生成文件
+    summary = {
+        'timestamp': datetime.now().isoformat(),
+        'total': 0,
+        'success': 0,
+        'failed': 0,
+        'items': [],
+        'error': None
+    }
     
     # 1. 获取待下载任务（可选：环境变量 DOWNLOAD_LIMIT 限制单次条数，避免超时或 B 站限流）
     limit_str = os.environ.get('DOWNLOAD_LIMIT')
@@ -179,28 +203,30 @@ def main():
     try:
         pending_items = get_pending_downloads(limit=limit)
     except Exception as e:
-        print(f"❌ {e}")
+        error_msg = str(e)
+        print(f"❌ {error_msg}")
+        summary['error'] = error_msg
+        # 即使失败也要写入 summary
+        with open('download-summary.json', 'w') as f:
+            json.dump(summary, f, indent=2)
         sys.exit(1)
     
     if not pending_items:
         print("✅ 没有待下载的任务")
         # 写入summary
+        summary['total'] = 0
         with open('download-summary.json', 'w') as f:
-            json.dump({
-                'timestamp': datetime.now().isoformat(),
-                'total': 0,
-                'success': 0,
-                'failed': 0,
-                'items': []
-            }, f, indent=2)
+            json.dump(summary, f, indent=2)
         return
+    
+    # 更新 summary 的 total
+    summary['total'] = len(pending_items)
     
     print(f"📋 找到 {len(pending_items)} 个待下载任务")
     print()
     
     success_count = 0
     fail_count = 0
-    summary_items = []
     
     for item in pending_items:
         bvid = item['bvid']
@@ -253,20 +279,19 @@ def main():
             
             item_result['error'] = error_msg
         
-        summary_items.append(item_result)
+        summary['items'].append(item_result)
         print()
     
-    # 写入summary
-    summary = {
-        'timestamp': datetime.now().isoformat(),
-        'total': len(pending_items),
-        'success': success_count,
-        'failed': fail_count,
-        'items': summary_items
-    }
+    # 更新 summary 的统计信息
+    summary['success'] = success_count
+    summary['failed'] = fail_count
     
-    with open('download-summary.json', 'w') as f:
-        json.dump(summary, f, indent=2)
+    # 写入summary（使用 try-except 确保即使写入失败也不影响主流程）
+    try:
+        with open('download-summary.json', 'w') as f:
+            json.dump(summary, f, indent=2)
+    except Exception as e:
+        print(f"⚠️  写入 summary 文件失败: {e}")
     
     # 打印总结
     print("=" * 60)

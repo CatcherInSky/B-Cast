@@ -83,9 +83,10 @@ jobs:
           [triggers]
           crons = ["0 2 * * *"]
           
-          # Environment variables
+          # Environment variables（GITHUB_REPO 供 /api/downloads/trigger-download 使用）
           [vars]
           WORKER_URL = "${{ secrets.WORKER_URL }}"
+          GITHUB_REPO = "${{ github.repository }}"
           EOF
       
       - name: Deploy to Cloudflare Workers
@@ -94,6 +95,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: backend
         run: pnpm exec wrangler deploy
+      
+      - name: Set Worker secret for trigger-download (optional)
+        if: secrets.TRIGGER_ACTION_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: backend
+        run: echo "${{ secrets.TRIGGER_ACTION_TOKEN }}" | pnpm exec wrangler secret put GITHUB_TOKEN
       
       - name: Check deployment
         run: |

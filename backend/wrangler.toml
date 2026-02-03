@@ -27,3 +27,4 @@ crons = ["0 2 * * *"]
 # Environment variables
 [vars]
 WORKER_URL = "b-cast.zhangchunxiang98.workers.dev"
+GITHUB_REPO = "CatcherInSky/B-Cast"

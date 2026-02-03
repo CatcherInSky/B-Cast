@@ -46,13 +46,19 @@ jobs:
         env:
           PENDING_LIMIT: ${{ inputs.limit }}
         run: |
+          # 确保 WORKER_URL 有 https:// 前缀
+          WORKER_URL="${{ secrets.WORKER_URL }}"
+          if [[ ! "$WORKER_URL" =~ ^https?:// ]]; then
+            WORKER_URL="https://$WORKER_URL"
+          fi
+          
           if [ -n "$PENDING_LIMIT" ]; then
-            RESPONSE=$(curl -s "${{ secrets.WORKER_URL }}/api/downloads/pending?limit=$PENDING_LIMIT")
+            RESPONSE=$(curl -s "${WORKER_URL}/api/downloads/pending?limit=$PENDING_LIMIT")
           else
-            RESPONSE=$(curl -s "${{ secrets.WORKER_URL }}/api/downloads/pending")
+            RESPONSE=$(curl -s "${WORKER_URL}/api/downloads/pending")
           fi
           echo "response=$RESPONSE" >> $GITHUB_OUTPUT
-          COUNT=$(echo $RESPONSE | jq -r '.count')
+          COUNT=$(echo $RESPONSE | jq -r '.count // 0')
           echo "count=$COUNT" >> $GITHUB_OUTPUT
           echo "📋 Found $COUNT pending downloads"
       

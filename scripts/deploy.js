@@ -5,7 +5,7 @@
  * 根据 docs/MVP.md 实现
  */
 
-import { execSync, spawn } from 'child_process';
+import { execSync, spawn, spawnSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -114,6 +114,7 @@ function generateWranglerToml(env) {
   const dbId = env.D1_DATABASE_ID;
   const bucketName = env.R2_BUCKET_NAME;
   const workerUrl = env.WORKER_URL || '';
+  const githubRepo = (env.GITHUB_REPO || '').trim();
   
   const content = `name = "b-cast"
 main = "src/index.ts"
@@ -144,6 +145,7 @@ crons = ["0 2 * * *"]
 # Environment variables
 [vars]
 WORKER_URL = "${workerUrl}"
+GITHUB_REPO = "${githubRepo}"
 `;
   
   writeFileSync(wranglerPath, content);
@@ -313,6 +315,16 @@ async function main() {
   
   log('✓ 配置验证通过', 'green');
   
+  // 检查触发下载所需配置，缺则提示（不阻断部署）
+  if (!env.GITHUB_REPO || !env.GITHUB_REPO.trim()) {
+    log('⚠️  GITHUB_REPO 未配置，访问 /api/downloads/trigger-download 触发下载将不可用', 'yellow');
+    log('   init 会根据 git 自动写入，或请在 .env 中添加 GITHUB_REPO=owner/repo', 'yellow');
+  }
+  if (!env.GITHUB_TOKEN || !env.GITHUB_TOKEN.trim()) {
+    log('⚠️  GITHUB_TOKEN 未配置，无法通过 Worker 链接触发下载', 'yellow');
+    log('   请见 README：创建 GitHub PAT（勾选 actions: write）并写入 .env', 'yellow');
+  }
+  
   if (dryRun) {
     log('\n✓ 干运行完成，配置验证通过', 'green');
     return;
@@ -338,6 +350,20 @@ async function main() {
     workerUrl = await deployBackend(env);
     if (!skipFrontend) {
       log('\n📝 前端已随 Worker 一起部署，访问同一域名即可使用', 'green');
+    }
+    // 若 .env 中有 GITHUB_TOKEN，写入 Worker 的 secret，供 /api/downloads/trigger-download 使用
+    if (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) {
+      log('\n📤 写入 Worker secret GITHUB_TOKEN...', 'blue');
+      const result = spawnSync('pnpm', ['exec', 'wrangler', 'secret', 'put', 'GITHUB_TOKEN'], {
+        cwd: join(rootDir, 'backend'),
+        input: env.GITHUB_TOKEN,
+        stdio: ['pipe', 'inherit', 'inherit'],
+      });
+      if (result.status === 0) {
+        log('✓ GITHUB_TOKEN 已写入 Worker', 'green');
+      } else {
+        log('⚠️  写入 GITHUB_TOKEN 失败（可能需先 wrangler login），可稍后手动运行: cd backend && echo "你的token" | pnpm exec wrangler secret put GITHUB_TOKEN', 'yellow');
+      }
     }
   } else {
     log('\n⚠️  跳过后端部署 (--skip-backend)', 'yellow');

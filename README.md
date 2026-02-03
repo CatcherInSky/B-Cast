@@ -49,8 +49,16 @@ pnpm init
 - 初始化远程数据库表结构
 - 首次部署 Worker 并得到访问地址
 - 将 **D1_DATABASE_NAME**、**D1_DATABASE_ID**、**R2_BUCKET_NAME**、**WORKER_URL** 写入项目根目录的 `.env` 文件
+- **GITHUB_REPO**：根据当前仓库的 `git remote origin` 自动写入（格式 `owner/repo`）；若无 git 或解析失败会提示输入，可留空稍后填
 
 结束时会在终端打印需要填写的 **GitHub Secrets** 列表，请先不要关掉终端，下一步要用。
+
+**触发下载（可选）**：若希望「访问 Worker 链接即触发下载」（`/api/downloads/trigger-download`），还需在 `.env` 中配置 **GITHUB_TOKEN**：
+
+1. 在 GitHub 创建 Personal Access Token：**Settings → Developer settings → Personal access tokens → Generate new token**
+2. 勾选权限 **`actions: write`**（用于触发 download-audio workflow）
+3. 在项目根目录 `.env` 中新增一行：`GITHUB_TOKEN=你的token`  
+   （不要提交 `.env`；部署时脚本会把该值写入 Worker 的 secret，供触发接口使用）
 
 ### 5. 配置 GitHub Secrets
 
@@ -67,6 +75,14 @@ pnpm init
 | `R2_BUCKET_NAME` | R2 Bucket 名 | 复制 `.env` 里的值（如 `b-cast`） |
 | `WORKER_URL` | Worker 域名（不含 `https://`） | 复制 `.env` 里的值（如 `b-cast.xxx.workers.dev`） |
 
+若使用 **GitHub Actions 部署**且希望 Worker 能「访问链接即触发下载」，再增加（可选）：
+
+| 名称 | 说明 |
+|------|------|
+| `TRIGGER_ACTION_TOKEN` | 你的 GitHub PAT（勾选 `actions: write`），部署时会写入 Worker 的 GITHUB_TOKEN secret |
+
+（GITHUB_REPO 在 CI 中会使用 `github.repository` 自动注入，无需单独配置。）
+
 如需使用「自动下载 B 站音频」的 GitHub Action，再增加（可选）：
 
 | 名称 | 说明 |
@@ -76,6 +92,8 @@ pnpm init
 **注意**：`CLOUDFLARE_API_TOKEN` 不要写入 `.env`，只放在 GitHub Secrets 中，供 Actions 使用；本地部署用 `wrangler login`，不需要 API Token。
 
 ### 6. 执行部署
+
+部署前会检查 `.env` 是否含 **GITHUB_REPO**、**GITHUB_TOKEN**；缺则仅提示，不阻断部署。部署时会根据 `.env` 生成 Worker 配置（含 GITHUB_REPO），若存在 GITHUB_TOKEN 会通过 `wrangler secret put` 写入 Worker，供 `/api/downloads/trigger-download` 使用。
 
 任选其一：
 

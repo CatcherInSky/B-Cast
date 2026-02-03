@@ -346,49 +346,47 @@ downloadRoutes.get('/audio/:bvidOrPath', async (c) => {
   }
 });
 
-// 手动触发GitHub Action下载（需要配置GITHUB_TOKEN）
-downloadRoutes.post('/trigger-download', async (c) => {
+// 手动触发 GitHub Action 下载（需配置 GITHUB_TOKEN、GITHUB_REPO）
+// 支持 GET（浏览器直接打开链接）和 POST
+async function handleTriggerDownload(c: any) {
+  const { GITHUB_TOKEN, GITHUB_REPO } = c.env as any;
+  if (!GITHUB_TOKEN || !GITHUB_REPO) {
+    return c.json({ success: false, error: '未配置GitHub集成' }, 500);
+  }
+  const response = await fetch(
+    `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/download-audio.yml/dispatches`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'B-Cast-Worker/1.0', // GitHub API 要求必须有 User-Agent
+      },
+      body: JSON.stringify({ ref: 'main' }),
+    }
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`GitHub API错误: ${response.status} ${errorText}`);
+  }
+  return c.json({ success: true, message: '下载任务已触发' });
+}
+
+downloadRoutes.get('/trigger-download', async (c) => {
   try {
-    const { GITHUB_TOKEN, GITHUB_REPO } = c.env as any;
-
-    if (!GITHUB_TOKEN || !GITHUB_REPO) {
-      return c.json({ 
-        success: false, 
-        error: '未配置GitHub集成' 
-      }, 500);
-    }
-
-    // 调用GitHub API触发workflow
-    const response = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/download-audio.yml/dispatches`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ref: 'main', // 或者 'master'
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`GitHub API错误: ${response.status} ${errorText}`);
-    }
-
-    return c.json({ 
-      success: true, 
-      message: '下载任务已触发' 
-    });
-
+    return await handleTriggerDownload(c);
   } catch (error: any) {
     console.error('触发下载失败:', error);
-    return c.json({ 
-      success: false, 
-      error: error.message 
-    }, 500);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+downloadRoutes.post('/trigger-download', async (c) => {
+  try {
+    return await handleTriggerDownload(c);
+  } catch (error: any) {
+    console.error('触发下载失败:', error);
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
