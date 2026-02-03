@@ -9,6 +9,7 @@ import json
 import sys
 import subprocess
 import requests
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -105,6 +106,24 @@ def download_audio(bvid, title):
     temp_dir.mkdir(exist_ok=True)
     output_path = temp_dir / bvid
 
+    # 构建完整的浏览器请求头，避免 B站 412 错误
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.bilibili.com/',
+        'Origin': 'https://www.bilibili.com',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'Upgrade-Insecure-Requests': '1',
+    }
+    
+    # 如果有 Cookie，添加到请求头
+    if BILIBILI_SESSDATA:
+        headers['Cookie'] = f'SESSDATA={BILIBILI_SESSDATA}'
+
     # 优先 m4a，否则任意最佳音频；不启用 FFmpeg 后处理，避免转码耗时
     ydl_opts = {
         'format': 'bestaudio[ext=m4a]/bestaudio',
@@ -113,13 +132,8 @@ def download_audio(bvid, title):
         'no_warnings': False,
         'retries': 3,
         'fragment_retries': 3,
+        'http_headers': headers,  # 始终设置请求头，避免 412 错误
     }
-    if BILIBILI_SESSDATA:
-        ydl_opts['cookiefile'] = None
-        ydl_opts['http_headers'] = {
-            'Cookie': f'SESSDATA={BILIBILI_SESSDATA}',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-        }
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -228,9 +242,15 @@ def main():
     success_count = 0
     fail_count = 0
     
-    for item in pending_items:
+    for idx, item in enumerate(pending_items):
         bvid = item['bvid']
         title = item['title']
+        
+        # 在任务之间添加延迟，避免请求过快触发 B站限流（第一个任务不需要延迟）
+        if idx > 0:
+            delay = 2  # 延迟 2 秒
+            print(f"   ⏸️  等待 {delay} 秒，避免请求过快...")
+            time.sleep(delay)
         
         print(f"⏳ 处理: {bvid} - {title[:50]}...")
         item_result = {
