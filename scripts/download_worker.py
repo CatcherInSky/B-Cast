@@ -100,66 +100,72 @@ def update_download_status(bvid, status, audio_url=None, file_size=None, error=N
         return False
 
 def download_audio(bvid, title):
-    """使用 yt-dlp 直接下载音频，优先 m4a（不转码，缩短 Action 执行时间）。"""
+    """使用 yt-dlp 命令行直接下载音频，优先 m4a（不转码，缩短 Action 执行时间）。"""
     url = f'https://www.bilibili.com/video/{bvid}'
     temp_dir = Path('/tmp/b-cast-downloads')
     temp_dir.mkdir(exist_ok=True)
     output_path = temp_dir / bvid
 
-    # 简化配置：yt-dlp 会自动处理请求头，不需要手动设置复杂的 headers
-    # 优先 m4a，否则任意最佳音频；不启用 FFmpeg 后处理，避免转码耗时
-    ydl_opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio',
-        'outtmpl': f'{output_path}.%(ext)s',
-        'quiet': False,
-        'no_warnings': False,
-        'retries': 3,
-        'fragment_retries': 3,
-    }
+    # 直接使用命令行执行 yt-dlp，完全按照本地成功的命令（不添加任何多余参数）
+    # 使用 %(id)s 与本地命令完全一致，通过工作目录指定输出位置
+    cmd = [
+        'yt-dlp',
+        '-f', 'bestaudio[ext=m4a]/bestaudio',
+        '-o', '%(id)s.%(ext)s',  # 完全按照本地成功的命令格式
+        url
+    ]
     
-    # 如果有 Cookie，通过 cookies 参数传递（可选，大多数公开视频不需要）
+    # 如果有 Cookie，添加到命令中
     if BILIBILI_SESSDATA:
-        # yt-dlp 支持通过 http_headers 传递 Cookie
         if BILIBILI_SESSDATA.startswith('SESSDATA=') or '=' in BILIBILI_SESSDATA:
-            ydl_opts['http_headers'] = {'Cookie': BILIBILI_SESSDATA}
+            cookie_header = BILIBILI_SESSDATA
         else:
-            ydl_opts['http_headers'] = {'Cookie': f'SESSDATA={BILIBILI_SESSDATA}'}
+            cookie_header = f'SESSDATA={BILIBILI_SESSDATA}'
+        cmd.insert(-1, '--add-header')
+        cmd.insert(-1, f'Cookie:{cookie_header}')
         print(f"   🔐 使用 Cookie 进行下载")
     
-    # 打印调试信息：显示配置和等效命令
-    print(f"   🔧 yt-dlp 配置:")
-    print(f"      URL: {url}")
-    print(f"      格式: {ydl_opts['format']}")
-    print(f"      输出模板: {ydl_opts['outtmpl']}")
-    print(f"      重试次数: {ydl_opts['retries']}")
-    if 'http_headers' in ydl_opts:
-        cookie_value = ydl_opts['http_headers'].get('Cookie', '')
-        # 只显示前20个字符，避免泄露完整 Cookie
-        cookie_display = cookie_value[:20] + '...' if len(cookie_value) > 20 else cookie_value
-        print(f"      Cookie: {cookie_display}")
-    else:
-        print(f"      Cookie: 未设置")
-    
-    # 构建等效的命令行命令（用于调试）
-    cmd_parts = ['yt-dlp']
-    cmd_parts.append(f'-f "{ydl_opts["format"]}"')
-    cmd_parts.append(f'-o "{ydl_opts["outtmpl"]}"')
-    if 'http_headers' in ydl_opts and 'Cookie' in ydl_opts['http_headers']:
-        cmd_parts.append(f'--add-header "Cookie:{ydl_opts["http_headers"]["Cookie"]}"')
-    cmd_parts.append(f'"{url}"')
-    print(f"   💻 等效命令: {' '.join(cmd_parts)}")
+    # 打印实际执行的命令（用于调试）
+    cmd_str = ' '.join(f'"{arg}"' if ' ' in arg or '://' in arg else arg for arg in cmd)
+    print(f"   💻 执行命令: {cmd_str}")
 
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if not info:
-                raise Exception('未获取到视频信息')
-            ext = (info.get('ext') or 'm4a').lower()
-            final_path = f'{output_path}.{ext}'
-            if not os.path.exists(final_path):
-                raise Exception(f"下载的文件未找到: {final_path}")
-            file_size = os.path.getsize(final_path)
-            return final_path, file_size, ext
+        # 执行命令，在临时目录中运行（这样 %(id)s 会生成在临时目录）
+        result = subprocess.run(
+            cmd,
+            cwd=str(temp_dir),  # 在临时目录中执行，%(id)s 会生成在这里
+            capture_output=True,
+            text=True,
+            timeout=600  # 10分钟超时
+        )
+        
+        if result.returncode != 0:
+            error_msg = result.stderr or result.stdout
+            print(f"   ❌ yt-dlp 错误输出: {error_msg[:500]}")
+            raise Exception(f"yt-dlp下载失败: {error_msg[:200]}")
+        
+        # 查找下载的文件（yt-dlp 会根据格式选择下载的文件）
+        # 使用 %(id)s 时，文件名就是 bvid + 扩展名
+        possible_exts = ['m4a', 'mp4', 'webm', 'opus', 'ogg', 'mp3', 'aac']
+        final_path = None
+        ext = None
+        
+        for possible_ext in possible_exts:
+            test_path = temp_dir / f'{bvid}.{possible_ext}'
+            if test_path.exists():
+                final_path = str(test_path)
+                ext = possible_ext
+                break
+        
+        if not final_path:
+            raise Exception(f"下载的文件未找到，bvid: {bvid}, 临时目录: {temp_dir}")
+        
+        file_size = os.path.getsize(final_path)
+        print(f"   ✅ 下载成功: {file_size / 1024 / 1024:.2f}MB (.{ext})")
+        return final_path, file_size, ext
+        
+    except subprocess.TimeoutExpired:
+        raise Exception("yt-dlp下载超时（10分钟）")
     except Exception as e:
         raise Exception(f"yt-dlp下载失败: {str(e)}")
 
