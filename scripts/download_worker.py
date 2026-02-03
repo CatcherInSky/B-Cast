@@ -125,6 +125,29 @@ def download_audio(bvid, title):
         else:
             ydl_opts['http_headers'] = {'Cookie': f'SESSDATA={BILIBILI_SESSDATA}'}
         print(f"   🔐 使用 Cookie 进行下载")
+    
+    # 打印调试信息：显示配置和等效命令
+    print(f"   🔧 yt-dlp 配置:")
+    print(f"      URL: {url}")
+    print(f"      格式: {ydl_opts['format']}")
+    print(f"      输出模板: {ydl_opts['outtmpl']}")
+    print(f"      重试次数: {ydl_opts['retries']}")
+    if 'http_headers' in ydl_opts:
+        cookie_value = ydl_opts['http_headers'].get('Cookie', '')
+        # 只显示前20个字符，避免泄露完整 Cookie
+        cookie_display = cookie_value[:20] + '...' if len(cookie_value) > 20 else cookie_value
+        print(f"      Cookie: {cookie_display}")
+    else:
+        print(f"      Cookie: 未设置")
+    
+    # 构建等效的命令行命令（用于调试）
+    cmd_parts = ['yt-dlp']
+    cmd_parts.append(f'-f "{ydl_opts["format"]}"')
+    cmd_parts.append(f'-o "{ydl_opts["outtmpl"]}"')
+    if 'http_headers' in ydl_opts and 'Cookie' in ydl_opts['http_headers']:
+        cmd_parts.append(f'--add-header "Cookie:{ydl_opts["http_headers"]["Cookie"]}"')
+    cmd_parts.append(f'"{url}"')
+    print(f"   💻 等效命令: {' '.join(cmd_parts)}")
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
