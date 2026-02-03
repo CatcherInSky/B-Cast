@@ -161,8 +161,15 @@ AUDIO_CONTENT_TYPES = {
 }
 
 
-def upload_to_r2_via_wrangler(local_path, bvid, ext='m4a'):
-    """通过 Wrangler CLI 上传文件到 R2，支持多种音频扩展名。"""
+def upload_to_r2_via_wrangler(local_path, bvid, ext='m4a', remote=True):
+    """通过 Wrangler CLI 上传文件到 R2，支持多种音频扩展名。
+    
+    Args:
+        local_path: 本地文件路径
+        bvid: 视频BV号
+        ext: 文件扩展名（默认 m4a）
+        remote: 是否上传到远程R2（默认True，GitHub Actions中必须为True）
+    """
     try:
         audio_key = f'audio/{bvid}.{ext}'
         content_type = AUDIO_CONTENT_TYPES.get(ext, 'application/octet-stream')
@@ -172,12 +179,26 @@ def upload_to_r2_via_wrangler(local_path, bvid, ext='m4a'):
             '--file', local_path,
             '--content-type', content_type,
         ]
+        # 在GitHub Actions或远程环境中，必须添加 --remote 标志
+        if remote:
+            cmd.append('--remote')
+        
         env = os.environ.copy()
         env['CLOUDFLARE_API_TOKEN'] = CLOUDFLARE_API_TOKEN
         env['CLOUDFLARE_ACCOUNT_ID'] = CLOUDFLARE_ACCOUNT_ID
+        
+        print(f"   🔧 执行命令: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=300)
+        
         if result.returncode != 0:
-            raise Exception(f"Wrangler上传失败: {result.stderr}")
+            error_msg = result.stderr or result.stdout
+            print(f"   ❌ Wrangler输出: {error_msg}")
+            raise Exception(f"Wrangler上传失败: {error_msg}")
+        
+        # 打印成功信息
+        if result.stdout:
+            print(f"   📝 Wrangler输出: {result.stdout.strip()}")
+        
         # 带扩展名的 URL，Worker 据此从 R2 取对应文件
         audio_url = f"{WORKER_URL}/api/downloads/audio/{bvid}.{ext}"
         return audio_url

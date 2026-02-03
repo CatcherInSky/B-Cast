@@ -63,7 +63,6 @@ jobs:
           echo "📋 Found $COUNT pending downloads"
       
       - name: Download and upload audio files
-        if: steps.get-pending.outputs.count != '0'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -72,7 +71,8 @@ jobs:
           BILIBILI_SESSDATA: ${{ secrets.BILIBILI_SESSDATA }}
           DOWNLOAD_LIMIT: ${{ inputs.limit }}
         run: |
-          python scripts/download_worker.py
+          # 即使没有待下载任务，也运行脚本以生成 summary 文件
+          python scripts/download_worker.py || true
       
       - name: Upload summary
         if: always()
@@ -81,3 +81,4 @@ jobs:
           name: download-summary
           path: download-summary.json
           retention-days: 7
+          if-no-files-found: warn
